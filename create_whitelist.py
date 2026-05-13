@@ -1,3 +1,4 @@
+# 目前需要手動將 top_1_300.csv、top_301_600.csv 匯入專案根目錄，再執行這支程式。https://www.money-link.com.tw/stxba/imwcontent0.asp?page=INVC1&ID=INVC1
 import csv
 
 # 準備一個空名單來放篩選後的代號
