@@ -1,0 +1,34 @@
+- 先在這個網頁自己下載市值前六百名公司(.csv)
+https://goodinfo.tw/tw/StockList.asp?MARKET_CAT=%E7%86%B1%E9%96%80%E6%8E%92%E8%A1%8C&INDUSTRY_CAT=%E5%85%AC%E5%8F%B8%E7%B8%BD%E5%B8%82%E5%80%BC%E6%9C%80%E9%AB%98%40%40%E5%85%AC%E5%8F%B8%E7%B8%BD%E5%B8%82%E5%80%BC%40%40%E5%85%AC%E5%8F%B8%E7%B8%BD%E5%B8%82%E5%80%BC%E6%9C%80%E9%AB%98&SHEET=%E5%85%AC%E5%8F%B8%E5%9F%BA%E6%9C%AC%E8%B3%87%E6%96%99&RPT_TIME=%E6%9C%80%E6%96%B0%E8%B3%87%E6%96%99&RANK_RANGE=300
+
+- 下載後的兩個檔案命名為
+top_1_300.csv
+top_301_600.csv
+
+- 建立白名單
+執行 python create_whitelist.py
+(過濾四位數股票代號，建立前五百多大白名單 whitelist.txt）
+
+---------------------------------------------------------------------------------------------
+
+- 爬取法說會網頁資料並篩選白名單
+執行 python fetch_mops.py
+https://www.money-link.com.tw/stxba/imwcontent0.asp?page=INVC1&ID=INVC1
+執行完會產生 investor_conferences_filtered.csv
+
+- 將剛產出的法說會日期檔案自動新增到日曆
+執行 upload_calendar.py
+需要將 calendar-bot@... 加入日曆共用名單
+
+---------------------------------------------------------------------------------------------
+
+- 爬取財務報告網頁資料並篩選白名單
+執行 python fetch_mops_board_meetings.py
+https://www.moneydj.com/z/ze/zej/zej.djhtm?A=EV000180&B=2026-5-14&C=0
+(要注意這個網址包含日期所以要寫動態的)
+執行完會產生 financial_reports.csv
+
+- 將剛產出的財務報告日期檔案自動新增到日曆
+執行 python upload_financial_reports.py
+
+---------------------------------------------------------------------------------------------
