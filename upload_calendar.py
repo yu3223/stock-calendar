@@ -5,7 +5,7 @@ import datetime
 import time
 
 # 1. 設定你的日曆 ID
-CALENDAR_ID = '7f6dc359e22bf90a02f4d50aa04eb0a0ce2abd21b02359603f9f7bfdf886b4d0@group.calendar.google.com'
+CALENDAR_ID = '3a03cb8f327675cfccf7c8d9bc6f170fc8ed33f17ebe954e2bb2b16e4627c45e@group.calendar.google.com'
 
 # 2. 驗證並建立 Google Calendar API 服務
 SCOPES = ['https://www.googleapis.com/auth/calendar']
@@ -29,22 +29,20 @@ except FileNotFoundError:
     print("❌ 找不到 CSV 檔案。")
     exit()
 
-def check_event_exists(summary, start_date):
-    """檢查日曆中是否已存在相同標題與日期的行程"""
-    # 設定搜尋範圍為該日期的整天
-    time_min = f"{start_date}T00:00:00Z"
-    time_max = f"{start_date}T23:59:59Z"
-    
-    events_result = service.events().list(
-        calendarId=CALENDAR_ID,
-        timeMin=time_min,
-        timeMax=time_max,
-        q=summary, # 使用關鍵字搜尋摘要
-        singleEvents=True
-    ).execute()
-    
-    events = events_result.get('items', [])
-    return len(events) > 0
+def check_event_exists(unique_id):
+    """使用唯一 ID (隱形標籤) 檢查日曆中是否已存在行程"""
+    try:
+        events_result = service.events().list(
+            calendarId=CALENDAR_ID,
+            privateExtendedProperty=f"event_source_id={unique_id}",
+            maxResults=1 # 只要有找到一個就代表存在，不需要全部抓回來
+        ).execute()
+        
+        events = events_result.get('items', [])
+        return len(events) > 0
+    except Exception as e:
+        print(f"⚠️ 檢查重複時發生錯誤：{e}")
+        return False
 
 # 4. 逐筆檢查並新增
 for index, row in df.iterrows():
@@ -63,11 +61,14 @@ for index, row in df.iterrows():
             gregorian_year = int(year_str)
         
         formatted_date = f"{gregorian_year}-{parts[1].zfill(2)}-{parts[2].zfill(2)}"
-        
         summary = f"[法說會] {row['公司代號']} {row['公司名稱']}"
         
-        # --- 🌟 關鍵修正：檢查重複 ---
-        if check_event_exists(summary, formatted_date):
+        # --- 🌟 建立這筆行程的唯一身分證 ---
+        # 格式範例：investor_2330_20240515
+        unique_id = f"investor_{row['公司代號']}_{formatted_date.replace('-', '')}"
+        
+        # --- 🌟 檢查重複 (使用身分證過濾) ---
+        if check_event_exists(unique_id):
             print(f"⏩ 跳過已存在行程：{summary} ({formatted_date})")
             continue
         # ----------------------------
@@ -85,6 +86,12 @@ for index, row in df.iterrows():
             'description': f"相關說明：{str(row['說明'])}",
             'start': {'dateTime': start_time_str, 'timeZone': 'Asia/Taipei'},
             'end': {'dateTime': end_time_str, 'timeZone': 'Asia/Taipei'},
+            # --- 🌟 新增時貼上隱形標籤 ---
+            'extendedProperties': {
+                'private': {
+                    'event_source_id': unique_id
+                }
+            }
         }
 
         service.events().insert(calendarId=CALENDAR_ID, body=event).execute()
