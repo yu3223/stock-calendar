@@ -21,8 +21,9 @@ def get_whitelist(file_path="whitelist.txt"):
 
 def scrape_moneydj_calendar():
     chrome_options = Options()
-    # 提醒：如果要放到 GitHub Actions 上跑，請把下面這行註解拿掉
-    # chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--headless")              # 不開啟實體視窗 (GitHub Actions 必備)
+    chrome_options.add_argument("--no-sandbox")            # 停用沙盒模式 (Linux 環境建議)
+    chrome_options.add_argument("--disable-dev-shm-usage") # 避免記憶體不足導致崩潰
 
     driver = webdriver.Chrome(options=chrome_options)
     
