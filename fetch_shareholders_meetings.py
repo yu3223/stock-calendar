@@ -43,6 +43,20 @@ def fetch_all_shareholders_meetings():
         driver.get(url)
         print("正在載入網頁...")
         
+        try:
+            # 1. 等待表格出現 (把時間從 10 秒拉長到 30 秒)
+            WebDriverWait(driver, 30).until(
+                EC.presence_of_element_located((By.TAG_NAME, "table"))
+            )
+            time.sleep(2)
+        except Exception as timeout_e:
+            # 如果等不到表格，就截圖存證
+            print("❌ 網頁載入超時，可能被防爬蟲機制阻擋！")
+            print(f"當前網頁標題: {driver.title}")
+            driver.save_screenshot("error_screenshot.png")
+            print("📸 已儲存錯誤截圖為 error_screenshot.png")
+            raise timeout_e # 把錯誤丟出去讓程式停止
+        
         while True:
             # 1. 等待表格出現 (確保資料已載入)
             WebDriverWait(driver, 10).until(

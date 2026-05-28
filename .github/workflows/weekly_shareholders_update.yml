@@ -36,6 +36,14 @@ jobs:
       run: |
         python fetch_shareholders_meetings.py
 
+    # 👇 新增這個步驟：如果上面失敗了，就把截圖抓下來給你看
+    - name: 📤 上傳偵錯截圖
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: debug-screenshot
+        path: error_screenshot.png
+
     - name: 步驟二：比對白名單並上傳至日曆
       run: |
         python upload_shareholders_meetings.py
