@@ -15,18 +15,24 @@ def fetch_all_shareholders_meetings():
     
     # 瀏覽器設定
     options = Options()
-    # 💡 建議：本機開發測試時，先把下面這行註解掉，讓你看得到瀏覽器自動點擊的過程
-    # 💡 針對新版 Chrome 的無頭模式語法 (加上 =new)
+    
+    # 1. 基礎無頭設定
     options.add_argument('--headless=new') 
     
-    # 💡 Linux 伺服器環境必備的穩定性參數
+    # 2. 伺服器環境必備 (防止記憶體不足與權限崩潰)
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
+    
+    # 3. 關閉不必要的圖形與擴充功能 (大幅降低啟動失敗率)
     options.add_argument('--disable-gpu')
+    options.add_argument('--disable-extensions')
+    options.add_argument('--disable-software-rasterizer')
+    
+    # 4. 視窗大小與偽裝
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-
+    
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     url = "https://stockservices.tdcc.com.tw/evote/index.html?submitted=true&selected=code"
 
