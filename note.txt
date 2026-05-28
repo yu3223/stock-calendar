@@ -37,3 +37,11 @@ https://www.moneydj.com/z/ze/zej/zej.djhtm?A=EV000180&B=2026-5-14&C=0
 執行 python upload_financial_reports.py
 
 ---------------------------------------------------------------------------------------------
+
+- 爬取股東會網頁資料並篩選白名單（這個要翻很多頁所以比較久）
+執行 python fetch_shareholders_meetings.py
+https://stockservices.tdcc.com.tw/evote/index.html?submitted=true&selected=code
+執行完會產生 shareholders_meetings_test.csv
+
+- 將剛產出的股東會日期檔案自動新增到日曆
+執行 python upload_shareholders_meetings.py
