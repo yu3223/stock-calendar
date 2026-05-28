@@ -23,7 +23,7 @@ def fetch_all_shareholders_meetings():
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     
-    # 3. 關閉不必要的圖形與擴充功能 (大幅降低啟動失敗率)
+    # 3. 關閉不必要的圖形與擴充功能
     options.add_argument('--disable-gpu')
     options.add_argument('--disable-extensions')
     options.add_argument('--disable-software-rasterizer')
@@ -32,6 +32,13 @@ def fetch_all_shareholders_meetings():
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+
+    # 🌟 5. 關鍵新武器：強制設定為台灣繁體中文語系 (避免被導向英文首頁)
+    options.add_argument('--lang=zh-TW')
+    prefs = {
+        "intl.accept_languages": "zh-TW,zh,en-US,en"
+    }
+    options.add_experimental_option("prefs", prefs)
     
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     url = "https://stockservices.tdcc.com.tw/evote/index.html?submitted=true&selected=code"
