@@ -127,7 +127,7 @@ def main():
             if not formatted_date:
                 continue
 
-            summary = f"📢 [股東會] {stock_code} {stock_name}"
+            summary = f"[股東會] {stock_code} {stock_name}"
             
             # --- 檢查重複 ---
             if check_event_exists(summary, formatted_date):
