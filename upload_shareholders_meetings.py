@@ -1,67 +1,55 @@
+import os
 import pandas as pd
+import time
+from datetime import datetime, timedelta
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-import time
-import os
 
-# ==========================================
-# 1. 設定區
-# ==========================================
-# 股東會專用的日曆 ID
-CALENDAR_ID = 'bc5ec611babb02ea0f0f27a5e40796a5c427669472b01cf91bf6bb53ce0790ed@group.calendar.google.com' 
+# --- 設定區塊 ---
+CSV_FILENAME = "shareholders_meetings_test.csv"
+WHITELIST_FILENAME = "whitelist.txt"
+CALENDAR_ID = "2ae554dfe64c53aed35ac7aae9dc5fa464be38b73b77ea8bb4d4a8a399b6af65@group.calendar.google.com"
 
+# 請準備好從 Google Cloud Console 下載的服務帳戶金鑰檔案，並將檔名與路徑更新於此
+SCOPES = ['https://www.googleapis.com/auth/calendar']
 SERVICE_ACCOUNT_FILE = 'credentials.json'
-CSV_FILE = 'shareholders_meetings_test.csv'
-WHITELIST_FILE = 'whitelist.txt'
 
-# ==========================================
-# 2. 輔助函式 (股東會專屬邏輯)
-# ==========================================
 def load_whitelist(filepath):
-    """讀取 txt 檔案並回傳股票代號列表"""
+    """讀取 whitelist.txt 並回傳清單"""
     if not os.path.exists(filepath):
-        print(f"⚠️ 找不到白名單檔案：{filepath}，請確認檔案與程式在同一資料夾！")
+        print(f"錯誤：找不到白名單檔案 {filepath}")
         return []
-    with open(filepath, 'r', encoding='utf-8') as file:
-        return [line.strip() for line in file if line.strip()]
+    
+    with open(filepath, "r", encoding="utf-8") as f:
+        # 讀取每一行，去除換行符號與空白，並過濾掉空行
+        return [line.strip() for line in f if line.strip()]
 
-def convert_roc_to_gregorian(roc_date_str):
-    """民國年轉西元年 (115/06/30 -> 2026-06-30)"""
+def filter_data(csv_filename, whitelist):
+    """讀取 CSV 並依照白名單篩選資料"""
+    if not os.path.exists(csv_filename):
+        print(f"錯誤：找不到資料檔案 {csv_filename}")
+        return []
+
     try:
-        parts = str(roc_date_str).strip().split('/')
-        if len(parts) == 3:
-            year = int(parts[0]) + 1911
-            month = parts[1].zfill(2)
-            day = parts[2].zfill(2)
-            return f"{year}-{month}-{day}"
+        df = pd.read_csv(csv_filename, dtype={"代碼": str})
     except Exception as e:
-        print(f"日期轉換失敗: {roc_date_str} - {e}")
-    return None
+        print(f"讀取 CSV 時發生錯誤: {e}")
+        return []
 
-# ==========================================
-# 3. 驗證並建立 Google Calendar API 服務
-# ==========================================
-print("正在連線到 Google Calendar...")
-try:
-    if not os.path.exists(SERVICE_ACCOUNT_FILE):
-        print(f"錯誤：找不到 {SERVICE_ACCOUNT_FILE} 檔案。")
-        exit()
-        
-    creds = service_account.Credentials.from_service_account_file(
-        SERVICE_ACCOUNT_FILE, scopes=['https://www.googleapis.com/auth/calendar'])
-    service = build('calendar', 'v3', credentials=creds)
-    print("連線成功！")
-except Exception as e:
-    print(f"連線失敗：{e}")
-    exit()
+    filtered_df = df[df['代碼'].isin(whitelist)]
+    upload_data = filtered_df.to_dict('records')
+    
+    print("-" * 40)
+    print(f"資料總數：{len(df)} 筆 | 白名單篩選後：{len(upload_data)} 筆符合條件")
+    print("-" * 40)
+    
+    return upload_data
 
-# ==========================================
-# 4. 定義檢查重複函式 (沿用財報程式的精確比對邏輯)
-# ==========================================
-def check_event_exists(summary, event_date):
-    """檢查日曆中是否已存在相同標題與日期的行程 (全天事件精確修正版)"""
-    time_min = f"{event_date}T00:00:00+08:00"
-    time_max = f"{event_date}T23:59:59+08:00"
+def check_event_exists(service, summary, event_date_str):
+    """檢查日曆中是否已存在相同標題的行程 (避免重複新增)"""
+    # 建立當天 00:00 到 23:59 的搜尋範圍，加上台北時區 (+08:00)
+    time_min = f"{event_date_str}T00:00:00+08:00"
+    time_max = f"{event_date_str}T23:59:59+08:00"
     
     try:
         events_result = service.events().list(
@@ -73,7 +61,7 @@ def check_event_exists(summary, event_date):
         
         events = events_result.get('items', [])
         
-        # 100% 精確字串比對
+        # 精確比對標題，如果已經有一模一樣的行程就回傳 True
         for event in events:
             if event.get('summary') == summary:
                 return True
@@ -83,89 +71,90 @@ def check_event_exists(summary, event_date):
         print(f"檢查重複時發生錯誤: {e}")
         return False
 
-# ==========================================
-# 5. 主程式：讀取、過濾與上傳
-# ==========================================
-def main():
-    # 載入白名單
-    whitelist = load_whitelist(WHITELIST_FILE)
-    if not whitelist:
-        print("❌ 白名單為空或讀取失敗，程式終止。")
+def upload_to_google_calendar(events_data):
+    """將資料上傳至 Google 日曆"""
+    if not events_data:
+        print("沒有需要上傳的資料。")
         return
-    print(f"📄 成功載入白名單，共 {len(whitelist)} 檔股票。")
 
-    # 讀取 CSV
+    # 1. 建立 Google Calendar API 連線
     try:
-        df = pd.read_csv(CSV_FILE)
-        print(f"讀取到 {len(df)} 筆原始股東會資料，準備過濾...")
-    except FileNotFoundError:
-        print(f"錯誤：找不到 {CSV_FILE} 檔案，請先執行爬蟲。")
+        creds = service_account.Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_FILE, scopes=SCOPES
+        )
+        service = build("calendar", "v3", credentials=creds)
+        print("Google Calendar API 認證成功！")
+    except Exception as e:
+        print(f"認證失敗，請檢查 {SERVICE_ACCOUNT_FILE} 是否存在且設定正確。錯誤: {e}")
         return
 
-    # 清理資料：萃取代號與名稱
-    df['股票代號'] = df['證券代號/名稱'].astype(str).str.extract(r'(\d{4,})')
-    df['公司名稱'] = df['證券代號/名稱'].astype(str).str.replace(r'\d+', '', regex=True).str.strip()
-
-    # 白名單過濾
-    target_df = df[df['股票代號'].isin(whitelist)]
-    if target_df.empty:
-        print("CSV 中沒有符合白名單的股東會資料。")
-        return
-        
-    print(f"✅ 找到 {len(target_df)} 筆符合白名單的資料，準備進行檢查與上傳...")
-
-    # 逐筆處理並新增
-    for index, row in target_df.iterrows():
+    # 2. 逐筆上傳資料
+    for event in events_data:
         try:
-            stock_code = row['股票代號']
-            stock_name = row['公司名稱']
-            roc_meeting_date = row['會議日期']
-            voting_period = row['投票起迄日']
-
-            # 轉換日期
-            formatted_date = convert_roc_to_gregorian(roc_meeting_date)
-            if not formatted_date:
-                continue
-
-            summary = f"[股東會] {stock_code} {stock_name}"
+            # 整理時間格式 (將 2026/06/17 轉換為 2026-06-17)
+            date_str = str(event["日期"]).replace("/", "-")
+            time_str = event["時間"]
             
-            # --- 檢查重複 ---
-            if check_event_exists(summary, formatted_date):
-                print(f"🔄 跳過已存在行程：{summary} ({formatted_date})")
+            # 防呆：如果網頁沒提供時間，預設設定為早上 9 點
+            if pd.isna(time_str) or not str(time_str).strip():
+                time_str = "09:00"
+
+            # 統一設定行程標題
+            summary = f"{event['股票名稱']} ({event['代碼']}) 股東會"
+            
+            # --- 核心防重複機制 ---
+            if check_event_exists(service, summary, date_str):
+                print(f"跳過已存在行程：{summary} ({date_str})")
                 continue
-            # ----------------
+            # ----------------------
 
-            # 建立全天事件
-            event_description = (
-                f"📈 公司：{stock_name} ({stock_code})\n"
-                f"🗓️ 股東會日期：{roc_meeting_date}\n"
-                f"🗳️ 電子投票起迄日：{voting_period}\n"
-                f"\n自動化排程更新"
-            )
+            start_dt_str = f"{date_str}T{time_str}:00"
+            start_dt = datetime.strptime(start_dt_str, "%Y-%m-%dT%H:%M:%S")
+            
+            # 假設股東會時間為 1 小時，計算結束時間
+            end_dt = start_dt + timedelta(hours=1)
 
-            event = {
-                'summary': summary,
-                'description': event_description,
-                'start': {
-                    'date': formatted_date, 
-                    'timeZone': 'Asia/Taipei',
+            # 準備打入 API 的事件內容格式 (包含公司名稱與代碼)
+            event_body = {
+                "summary": summary,
+                "location": str(event["地點"]),
+                "start": {
+                    "dateTime": start_dt.isoformat(),
+                    "timeZone": "Asia/Taipei",
                 },
-                'end': {
-                    'date': formatted_date, 
-                    'timeZone': 'Asia/Taipei',
+                "end": {
+                    "dateTime": end_dt.isoformat(),
+                    "timeZone": "Asia/Taipei",
                 },
             }
 
-            service.events().insert(calendarId=CALENDAR_ID, body=event).execute()
-            print(f"✅ 成功新增：{summary} ({formatted_date})")
+            # 呼叫 API 寫入日曆
+            created_event = service.events().insert(
+                calendarId=CALENDAR_ID, body=event_body
+            ).execute()
             
-            # 避免 API 呼叫過快被鎖
+            print(f"成功新增: {summary} ({date_str} {time_str})")
+            
+            # 加上短暫休眠，避免連續寫入過快觸發 API 限制
             time.sleep(0.5)
-            
+
         except Exception as e:
-            print(f"❌ 處理失敗：{row.get('證券代號/名稱', '未知')}，錯誤：{e}")
+            print(f"處理 {event.get('股票名稱')} 時發生錯誤: {e}")
 
-    print("🎉 股東會行事曆同步完成！")
-
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    print("啟動上傳程序...")
+    
+    # 步驟 1：載入白名單
+    my_whitelist = load_whitelist(WHITELIST_FILENAME)
+    if not my_whitelist:
+        print("白名單為空或讀取失敗，程式結束。")
+        exit()
+    print(f"成功載入 {len(my_whitelist)} 筆白名單。")
+    
+    # 步驟 2：篩選資料
+    ready_to_upload_data = filter_data(CSV_FILENAME, my_whitelist)
+    
+    # 步驟 3：上傳至日曆
+    upload_to_google_calendar(ready_to_upload_data)
+    
+    print("行事曆同步完成！")

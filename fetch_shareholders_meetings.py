@@ -1,131 +1,140 @@
-import time
-import pandas as pd
-from io import StringIO
-from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from bs4 import BeautifulSoup
+import time
+from datetime import datetime
+import pandas as pd
 
-def fetch_all_shareholders_meetings():
-    print("啟動瀏覽器中...")
+def fetch_yahoo_shareholders_meeting(target_date=None): 
+    if target_date is None:
+        target_date = datetime.today().strftime("%Y/%m/%d")
+        
+    print("啟動 Selenium 準備前往 Yahoo 股市...")
+    print(f"本次抓取目標日期設定為：{target_date}")
     
-    # 瀏覽器設定
+    # --- 無標頭模式設定 (適用於本地與 GitHub Actions) ---
     options = Options()
-    
-    # 1. 基礎無頭設定
-    options.add_argument('--headless=new') 
-    
-    # 2. 伺服器環境必備 (防止記憶體不足與權限崩潰)
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    
-    # 3. 關閉不必要的圖形與擴充功能
-    options.add_argument('--disable-gpu')
-    options.add_argument('--disable-extensions')
-    options.add_argument('--disable-software-rasterizer')
-    
-    # 4. 視窗大小與偽裝
-    options.add_argument('--window-size=1920,1080')
-    options.add_argument('--disable-blink-features=AutomationControlled')
-    options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-
-    # 🌟 5. 關鍵新武器：強制設定為台灣繁體中文語系 (避免被導向英文首頁)
-    options.add_argument('--lang=zh-TW')
-    prefs = {
-        "intl.accept_languages": "zh-TW,zh,en-US,en"
-    }
-    options.add_experimental_option("prefs", prefs)
+    options.add_argument("--headless") # 開啟無標頭模式
+    options.add_argument("--window-size=1920,1080")
+    options.add_argument("--disable-gpu") 
+    options.add_argument("--no-sandbox") 
+    options.add_argument("--disable-dev-shm-usage") 
     
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-    url = "https://stockservices.tdcc.com.tw/evote/index.html?submitted=true&selected=code"
-
-    all_dataframes = []
-    page_count = 1
-
+    url = "https://tw.stock.yahoo.com/calendar/holders-meeting"
+    
     try:
         driver.get(url)
-        print("正在載入網頁...")
+        print("等待初始網頁載入...")
+        time.sleep(3)
         
+        print(f"嘗試輸入目標日期：{target_date} ...")
         try:
-            # 1. 等待表格出現 (把時間從 10 秒拉長到 30 秒)
-            WebDriverWait(driver, 30).until(
-                EC.presence_of_element_located((By.TAG_NAME, "table"))
-            )
-            time.sleep(2)
-        except Exception as timeout_e:
-            # 如果等不到表格，就截圖存證
-            print("❌ 網頁載入超時，可能被防爬蟲機制阻擋！")
-            print(f"當前網頁標題: {driver.title}")
-            driver.save_screenshot("error_screenshot.png")
-            print("📸 已儲存錯誤截圖為 error_screenshot.png")
-            raise timeout_e # 把錯誤丟出去讓程式停止
+            date_input = driver.find_element(By.XPATH, "//input[@placeholder='yyyy/mm/dd']")
+            date_input.click()
+            time.sleep(0.5)
+            
+            for _ in range(10):
+                date_input.send_keys(Keys.BACKSPACE)
+            
+            date_input.send_keys(target_date)
+            date_input.send_keys(Keys.ENTER)
+            
+            print("等待新日期的資料載入...")
+            time.sleep(3) 
+        except Exception as e:
+            print(f"日期輸入階段發生異常，將直接抓取當前畫面資料。錯誤: {e}")
+
+        print("開始向下捲動網頁以載入所有資料 (背景執行中)...")
+        last_height = driver.execute_script("return document.body.scrollHeight")
         
         while True:
-            # 1. 等待表格出現 (確保資料已載入)
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.TAG_NAME, "table"))
-            )
-            time.sleep(2) # 額外等待 2 秒，確保 JS 渲染完成
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(2) 
             
-            # 2. 擷取當前頁面的 HTML，並交給 BeautifulSoup 與 Pandas 解析
-            print(f"正在抓取第 {page_count} 頁資料...")
-            soup = BeautifulSoup(driver.page_source, 'html.parser')
-            table = soup.find('table')
-            
-            if table:
-                # 🛠️ 修正點 1：使用 StringIO 包裝 HTML 字串，避免 Pandas 誤判為檔案路徑
-                df = pd.read_html(StringIO(str(table)))[0]
-                all_dataframes.append(df)
-            else:
-                print("找不到表格資料！")
+            new_height = driver.execute_script("return document.body.scrollHeight")
+            if new_height == last_height:
+                print("已經捲動到底部，資料全部載入完成！")
                 break
-
-            # 3. 尋找「下一頁」的按鈕
+            last_height = new_height
+            
+        print("正在解析網頁資料...")
+        soup = BeautifulSoup(driver.page_source, "html.parser")
+        
+        all_data = []
+        quote_links = soup.find_all('a', href=lambda href: href and href.startswith('/quote/'))
+        
+        print(f"找到 {len(quote_links)} 筆股東會資料，開始進行欄位切割...")
+        print("-" * 40)
+        
+        for link in quote_links:
             try:
-                # 🛠️ 修正點 2：根據實際網站結構，精準定位 class='btn-next' 的按鈕
-                next_button = driver.find_element(By.XPATH, "//a[@class='btn-next']")
+                # [萃取 名稱 與 代碼]
+                code_div = link.find('div')
+                raw_stock_code = code_div.text.strip() if code_div else ""
                 
-                # 如果這個按鈕在畫面上消失或被隱藏了，代表到了最後一頁
-                if not next_button.is_displayed():
-                    print("下一頁按鈕已隱藏，代表已經到達最後一頁，抓取完畢！")
-                    break
-
-                # 滾動畫面到按鈕處
-                driver.execute_script("arguments[0].scrollIntoView(true);", next_button)
-                time.sleep(1) # 稍微停頓，模擬人類動作
+                # 1. 必須用原始包含 .TW 或 .TWO 的代碼去取代，否則股票名稱會殘留尾綴
+                stock_name = link.text.replace(raw_stock_code, "").strip()
                 
-                # 🛠️ 修正點 3：使用 JavaScript 觸發點擊，避開按鈕被其他元素遮擋的問題
-                driver.execute_script("arguments[0].click();", next_button)
+                # 2. 把代碼用 "." 切割，只取第一部分 (例如 "1465.TW" -> "1465")
+                stock_code = raw_stock_code.split('.')[0] if '.' in raw_stock_code else raw_stock_code
                 
-                page_count += 1
+                col1 = link.parent 
+                row = col1.parent  
                 
-                # ⚠️ 關鍵：點擊後必須等待網頁的 JavaScript 抽換掉表格裡的資料
-                time.sleep(3) 
+                cols = row.find_all('div', recursive=False)
                 
+                if len(cols) >= 3:
+                    raw_date_time = cols[1].text.strip() 
+                    location = cols[2].text.strip()  
+                    
+                    # --- 拆分日期與時間 ---
+                    date_part = ""
+                    time_part = ""
+                    if " " in raw_date_time:
+                        parts = raw_date_time.split(" ")
+                        date_part = parts[0]
+                        time_part = parts[1]
+                    else:
+                        date_part = raw_date_time
+                    
+                    meeting_info = {
+                        "股票名稱": stock_name,
+                        "代碼": stock_code,
+                        "日期": date_part,
+                        "時間": time_part,
+                        "地點": location
+                    }
+                    all_data.append(meeting_info)
+                    
+                    print(f"{stock_name} ({stock_code}) | {date_part} | {time_part} | {location}")
+                    
             except Exception as e:
-                # 如果連這個元素都找不到，就結束迴圈
-                print("找不到下一頁按鈕，結束翻頁。")
-                break
-
-        # 4. 將所有頁面的資料合併並輸出成 CSV
-        if all_dataframes:
-            final_df = pd.concat(all_dataframes, ignore_index=True)
-            
-            # 💡 存成 CSV (使用 utf-8-sig 編碼，讓 Excel 打開不會中文亂碼)
+                print(f"解析單筆資料時發生錯誤跳過: {e}")
+                
+        print("-" * 40)
+        print(f"完美萃取出 {len(all_data)} 筆股東會資料！")
+        
+        if all_data:
+            df = pd.DataFrame(all_data)
             csv_filename = "shareholders_meetings_test.csv"
-            final_df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
-            
-            print(f"✅ 成功！共抓取 {len(final_df)} 筆資料，已儲存至 {csv_filename}")
-            print(final_df.head()) # 印出前五筆檢查
+            df.to_csv(csv_filename, index=False, encoding="utf-8-sig")
+            print(f"資料已成功儲存至 {csv_filename}")
         else:
-            print("❌ 沒有抓取到任何資料。")
-
+            print("沒有抓取到任何資料，略過儲存 CSV。")
+            
+        return all_data
+        
+    except Exception as e:
+        print(f"發生嚴重錯誤：{e}")
+        return []
+        
     finally:
         driver.quit()
 
 if __name__ == "__main__":
-    fetch_all_shareholders_meetings()
+    fetch_yahoo_shareholders_meeting()

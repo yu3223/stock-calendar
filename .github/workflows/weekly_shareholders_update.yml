@@ -1,13 +1,13 @@
 name: Weekly Shareholders Meeting Update
 
 on:
-  # 1. 設定自動排程 (每週執行)
+  # 1. 設定自動排程
   schedule:
-    # 這裡設定為：每週日 UTC 00:00 (台灣時間週日早上 08:00 AM)
-    # cron 語法對應：分 時 日 月 星期 (0 代表週日)
-    - cron: '0 0 * * 0'
+    # 台灣時間：每週一早上 06:00 (UTC 時間：每週日 22:00)
+    # cron 語法：分 時 日 月 星期 (0 代表週日)
+    - cron: '0 22 * * 0'
   
-  # 2. 允許手動觸發 (方便你隨時在 GitHub 網頁上點擊測試)
+  # 2. 允許手動觸發 (方便隨時在 GitHub 網頁上點擊測試)
   workflow_dispatch: 
 
 jobs:
@@ -28,7 +28,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install selenium webdriver-manager beautifulsoup4 pandas google-api-python-client google-auth lxml html5lib
 
-    - name: 從隱形保險箱解鎖並建立 credentials.json
+    - name: 建立 credentials.json 金鑰檔案
       run: |
         echo '${{ secrets.GCP_CREDENTIALS }}' > credentials.json
 
