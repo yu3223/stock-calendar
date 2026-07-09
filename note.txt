@@ -7,8 +7,8 @@ source /Users/shenyut/stock-calendar/venv/bin/activate
 https://goodinfo.tw/tw/StockList.asp?MARKET_CAT=%E7%86%B1%E9%96%80%E6%8E%92%E8%A1%8C&INDUSTRY_CAT=%E5%85%AC%E5%8F%B8%E7%B8%BD%E5%B8%82%E5%80%BC%E6%9C%80%E9%AB%98%40%40%E5%85%AC%E5%8F%B8%E7%B8%BD%E5%B8%82%E5%80%BC%40%40%E5%85%AC%E5%8F%B8%E7%B8%BD%E5%B8%82%E5%80%BC%E6%9C%80%E9%AB%98&SHEET=%E5%85%AC%E5%8F%B8%E5%9F%BA%E6%9C%AC%E8%B3%87%E6%96%99&RPT_TIME=%E6%9C%80%E6%96%B0%E8%B3%87%E6%96%99&RANK_RANGE=300
 
 - 下載後的兩個檔案命名為
-top_1_300.csv
-top_301_600.csv
+top_1_300
+top_301_600
 
 - 建立白名單
 執行 python create_whitelist.py
